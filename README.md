@@ -15,11 +15,13 @@ A native [Omarchy](https://omarchy.org/) bar plugin for [NetBird](https://netbir
 - Open the NetBird admin console
 - Mouse and keyboard friendly
 
-## Requirements
+## Requirements and permissions
 
 - A recent Omarchy release with shell plugin support
 - `netbird` installed, configured, and available on `PATH`
 - `wl-copy` for clipboard actions (included with Omarchy)
+
+The plugin does not install packages, create services, use `sudo`/`pkexec`, or overwrite user configuration. It runs `netbird status --json`, `netbird up`, and `netbird down` with your normal user permissions. SSH and ping actions open in Omarchy's configured terminal.
 
 Authenticate NetBird once before using the plugin:
 
@@ -44,6 +46,14 @@ Update later with:
 ```bash
 omarchy plugin update vstoms.netbird
 ```
+
+## Remove
+
+```bash
+omarchy plugin remove vstoms.netbird
+```
+
+Removal deletes only the installed plugin copy and its bar entry. It does not uninstall NetBird or change your NetBird configuration.
 
 ## Usage
 
@@ -92,8 +102,8 @@ omarchy-shell vstoms.netbird toggleNetbird
 
 Inspired by Dadangdut33's [NetbirdStatus plugin for DMS](https://github.com/Dadangdut33/dms-plugins/tree/master/NetbirdStatus), itself ported from the Noctalia NetBird plugin. This implementation is written for Omarchy's native plugin API.
 
-NetBird and its logo are trademarks of NetBird GmbH.
+The NetBird logo is an official brand asset used according to the [NetBird press-kit guidelines](https://netbird.io/press). NetBird and its logo are trademarks of NetBird GmbH and are not covered by this project's MIT license.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Plugin source and documentation are MIT licensed — see [LICENSE](LICENSE). The NetBird logo remains the property of NetBird GmbH.
