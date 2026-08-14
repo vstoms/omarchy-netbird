@@ -269,14 +269,28 @@ Panel {
             columnSpacing: Style.space(16)
             rowSpacing: Style.space(5)
 
-            InfoLabel { text: "NetBird IP" }
-            DetailValue { text: netbird.ip || "—"; copyable: netbird.ip !== ""; tooltipText: "Copy IP" }
-            InfoLabel { text: "Profile" }
-            DetailValue { text: netbird.profileName || "default" }
-            InfoLabel { text: "Management" }
-            DetailValue { text: netbird.managementConnected ? "Connected" : "Disconnected"; color: netbird.managementConnected ? root.foreground : root.urgent }
-            InfoLabel { text: "Signal" }
-            DetailValue { text: netbird.signalConnected ? "Connected" : "Disconnected"; color: netbird.signalConnected ? root.foreground : root.urgent }
+            StatusLabel { text: "NetBird IP" }
+            StatusValue {
+              text: netbird.ip || "—"
+              MouseArea {
+                anchors.fill: parent
+                enabled: netbird.ip !== ""
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: netbird.copy(netbird.ip)
+              }
+            }
+            StatusLabel { text: "Profile" }
+            StatusValue { text: netbird.profileName || "default" }
+            StatusLabel { text: "Management" }
+            StatusValue {
+              text: netbird.managementConnected ? "Connected" : "Disconnected"
+              color: netbird.managementConnected ? root.foreground : root.urgent
+            }
+            StatusLabel { text: "Signal" }
+            StatusValue {
+              text: netbird.signalConnected ? "Connected" : "Disconnected"
+              color: netbird.signalConnected ? root.foreground : root.urgent
+            }
           }
 
           PanelSeparator {
@@ -342,6 +356,22 @@ Panel {
         }
       }
     }
+  }
+
+  component StatusLabel: Text {
+    color: root.dim
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    Layout.fillWidth: true
+  }
+
+  component StatusValue: Text {
+    color: root.foreground
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.bodySmall
+    horizontalAlignment: Text.AlignRight
+    elide: Text.ElideRight
+    Layout.fillWidth: true
   }
 
   component PeerRow: CursorSurface {
