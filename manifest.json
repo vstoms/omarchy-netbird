@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "vstoms.netbird",
+  "name": "NetBird",
+  "version": "1.0.0",
+  "author": "Viggo Stomsvik",
+  "license": "MIT",
+  "description": "NetBird status, connection control, peer browsing, and quick actions for the Omarchy bar.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "NetBird",
+    "description": "Toggle NetBird, inspect your connection, browse peers, copy addresses, SSH, and ping.",
+    "category": "Network",
+    "aliases": ["netbird", "vpn"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 30,
+      "showDisconnectedPeers": true,
+      "adminConsoleUrl": "https://app.netbird.io/"
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 3600,
+        "step": 5,
+        "defaultValue": 30
+      },
+      {
+        "key": "showDisconnectedPeers",
+        "type": "boolean",
+        "label": "Show disconnected peers",
+        "defaultValue": true
+      },
+      {
+        "key": "adminConsoleUrl",
+        "type": "string",
+        "label": "Admin console URL",
+        "defaultValue": "https://app.netbird.io/"
+      }
+    ]
+  }
+}
