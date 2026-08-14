@@ -21,7 +21,7 @@ A native [Omarchy](https://omarchy.org/) bar plugin for [NetBird](https://netbir
 - `netbird` installed, configured, and available on `PATH`
 - `wl-copy` for clipboard actions (included with Omarchy)
 
-The plugin does not install packages, create services, use `sudo`/`pkexec`, or overwrite user configuration. It runs `netbird status --json`, `netbird up`, and `netbird down` with your normal user permissions. SSH and ping actions open in Omarchy's configured terminal.
+The plugin does not install packages, create services, request elevated privileges, or overwrite user configuration. It runs `netbird status --json`, `netbird up`, and `netbird down` as the logged-in user. SSH and ping actions open in Omarchy's configured terminal.
 
 Authenticate NetBird once before using the plugin:
 
