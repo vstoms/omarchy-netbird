@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "id": "vstoms.netbird",
   "name": "NetBird",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "Viggo Stomsvik",
   "license": "MIT",
-  "description": "NetBird status, connection control, peer browsing, and quick actions for the Omarchy bar.",
+  "description": "NetBird status, connection control, network selection, peer browsing, and quick actions for the Omarchy bar.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "NetBird",
-    "description": "Toggle NetBird, inspect your connection, browse peers, copy addresses, SSH, and ping.",
+    "description": "Toggle NetBird, inspect your connection, browse peers, select networks, copy addresses, SSH, and ping.",
     "category": "Network",
     "aliases": ["netbird", "vpn"],
     "allowMultiple": false,
@@ -20,6 +20,8 @@
     "defaults": {
       "refreshIntervalSec": 30,
       "showDisconnectedPeers": true,
+      "showNetworks": true,
+      "monochromeIcon": true,
       "adminConsoleUrl": "https://app.netbird.io/"
     },
     "schema": [
@@ -36,6 +38,19 @@
         "key": "showDisconnectedPeers",
         "type": "boolean",
         "label": "Show disconnected peers",
+        "defaultValue": true
+      },
+      {
+        "key": "showNetworks",
+        "type": "boolean",
+        "label": "Show networks and resources",
+        "defaultValue": true
+      },
+      {
+        "key": "monochromeIcon",
+        "type": "boolean",
+        "label": "Match icon to bar color",
+        "description": "Draw the NetBird mark in the bar's foreground color like other bar icons. Turn off to use the brand colors.",
         "defaultValue": true
       },
       {

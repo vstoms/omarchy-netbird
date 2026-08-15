@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  model:
+    name: Model tests and manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Model tests
+        run: node test/model.test.js
+
+      - name: Manifest is valid JSON
+        run: jq empty manifest.json
+
+      - name: Manifest has the fields the marketplace requires
+        run: |
+          for field in schemaVersion id name version author description kinds entryPoints; do
+            jq -e "has(\"$field\")" manifest.json >/dev/null \
+              || { echo "manifest.json is missing required field: $field"; exit 1; }
+          done
+
+      - name: Manifest version matches the changelog
+        run: |
+          version=$(jq -r .version manifest.json)
+          grep -q "^## \[$version\]" CHANGELOG.md \
+            || { echo "CHANGELOG.md has no entry for version $version"; exit 1; }
+
+      - name: Declared entry points exist
+        run: |
+          jq -r '.entryPoints | to_entries[] | .value' manifest.json | while read -r file; do
+            test -f "$file" || { echo "entry point file not found: $file"; exit 1; }
+          done
+
+      - name: Plugin ID is namespaced and not reserved
+        run: |
+          id=$(jq -r .id manifest.json)
+          case "$id" in
+            omarchy.*) echo "third-party plugins may not use the omarchy.* namespace"; exit 1 ;;
+            *.*) ;;
+            *) echo "plugin id must be namespaced, e.g. author.plugin"; exit 1 ;;
+          esac
+
+      - name: No symlinks in the plugin folder
+        run: |
+          found=$(find . -path ./.git -prune -o -type l -print)
+          test -z "$found" || { echo "plugin folders may not contain symlinks:"; echo "$found"; exit 1; }
+
+  qml:
+    name: QML lint
+    runs-on: ubuntu-latest
+    # The Omarchy shell provides the qs.Ui and qs.Commons modules this plugin
+    # imports, so linting needs a checkout of it. Tolerated for now: this job
+    # depends on an upstream branch and on Qt tooling package names that can
+    # move, and it must not be able to block an otherwise good change.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Check out the Omarchy shell
+        uses: actions/checkout@v4
+        with:
+          repository: basecamp/omarchy
+          ref: quattro
+          path: omarchy
+
+      - name: Install Qt 6 QML tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-declarative-dev-tools
+
+      - name: Lint QML against the shell
+        run: |
+          # `import qs.Ui` resolves as <import path>/qs/Ui/qmldir, so the shell
+          # has to be reachable under a directory named `qs`.
+          mkdir -p lintroot
+          ln -sfn "$GITHUB_WORKSPACE/omarchy/shell" lintroot/qs
+          qmllint=$(command -v qmllint6 || command -v qmllint || echo /usr/lib/qt6/bin/qmllint)
+          echo "using $qmllint"
+          "$qmllint" -I lintroot -I "$GITHUB_WORKSPACE/omarchy/shell" \
+            plugin/Panel.qml plugin/Service.qml plugin/NetbirdIcon.qml
