@@ -4,6 +4,8 @@ A native [Omarchy](https://omarchy.org/) bar plugin for [NetBird](https://netbir
 
 > Community project. Not affiliated with or endorsed by NetBird GmbH.
 
+![NetBird plugin panel showing connection status, networks, relays, and peers](preview.png)
+
 ## Features
 
 - NetBird connection state in the bar
@@ -30,7 +32,7 @@ A native [Omarchy](https://omarchy.org/) bar plugin for [NetBird](https://netbir
 
 The plugin does not install packages, create services, request elevated privileges, or overwrite user configuration. It runs `netbird status --json`, `netbird up`, and `netbird down` as the logged-in user. SSH and ping actions open in Omarchy's configured terminal.
 
-Authenticate NetBird once before using the plugin:
+Pre-authentication is optional. If NetBird needs credentials, open the panel and choose **Log in**; the plugin starts the device login, opens the verification page, and shows the code. You can still authenticate manually if preferred:
 
 ```bash
 netbird up

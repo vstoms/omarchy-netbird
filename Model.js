@@ -474,7 +474,9 @@ function filterPeers(peers, query, includeDisconnected) {
   var result = []
   for (var i = 0; i < list.length; i++) {
     var peer = list[i]
-    if (includeDisconnected === false && !peer.connected) continue
+    // "Connecting" is an active transition, not an offline peer. Hiding
+    // disconnected peers should still leave an in-progress handshake visible.
+    if (includeDisconnected === false && !peer.connected && !peer.connecting) continue
     if (matchesPeerQuery(peer, query)) result.push(peer)
   }
   return result

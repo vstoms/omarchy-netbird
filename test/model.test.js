@@ -130,6 +130,8 @@ assert.strictEqual(Model.filterPeers(pool, "", true).length, 3)
 assert.strictEqual(Model.filterPeers(pool, "", false).length, 2)
 assert.strictEqual(Model.filterPeers(pool, "off", true).length, 1)
 assert.strictEqual(Model.filterPeers(pool, "off", false).length, 0)
+const connectingPeer = Model.normalizePeer({ fqdn: "busy.example.net", status: "Connecting" })
+assert.strictEqual(Model.filterPeers([connectingPeer], "", false).length, 1)
 assert.strictEqual(Model.filterPeers(null, "x", true).length, 0)
 
 // Relays: unavailable ones sort first so failures are visible without scrolling.

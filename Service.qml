@@ -11,7 +11,10 @@ Item {
   property bool installed: false
   property bool running: false
   property int desiredState: -1
-  readonly property bool active: desiredState === -1 ? running : desiredState === 1
+  // Connecting is an active lifecycle state even when the transition was
+  // started outside the plugin. Keep an explicit user request authoritative
+  // until status confirms that it either completed or stopped progressing.
+  readonly property bool active: desiredState === -1 ? (running || connecting) : desiredState === 1
   property bool refreshing: false
   // Lifecycle state, one of: unknown, missing, daemonDown, idle, connecting,
   // connected, needsLogin, loginFailed, sessionExpired. Deliberately not
@@ -52,6 +55,11 @@ Item {
   property string loginCode: ""
   property bool loginActive: false
   property string loginOutput: ""
+  // Process termination is also reported through onExited. Keep user-initiated
+  // cancellation distinct from authentication failure so the exit handler
+  // neither invents an error nor hides a real one.
+  property bool loginCancelled: false
+  property string loginStopStatus: ""
 
   // A daemon that never answers must not be polled at full rate forever.
   property int failureStreak: 0
@@ -72,6 +80,9 @@ Item {
   property string actionError: ""
   property string networksOutput: ""
   property string networksErrorOutput: ""
+  // A list call already in flight when a mutation starts contains a snapshot
+  // from before that mutation and must not be applied when it eventually exits.
+  property bool discardNetworksResult: false
   property string networkActionOutput: ""
   property string networkActionError: ""
 
@@ -89,10 +100,18 @@ Item {
   function clearStatus(message, newState) {
     running = false
     connecting = false
-    if (desiredState === 0) desiredState = -1
+    // A cleared status is terminal for any optimistic switch position. In
+    // particular, an `up` request must not leave the switch checked after the
+    // daemon becomes unreachable.
+    desiredState = -1
     connState = newState || "idle"
     statusText = message || Model.stateLabel(connState)
     hint = Model.stateHint(connState)
+    // Version data belongs to the last successful status payload. Do not keep
+    // warning about an old mismatch when the daemon is no longer answering.
+    cliVersion = ""
+    daemonVersion = ""
+    versionMismatch = false
     ip = ""
     fqdn = ""
     managementConnected = false
@@ -126,10 +145,12 @@ Item {
     // A login that succeeded elsewhere (or a session that came back) clears
     // any prompt still on screen.
     if (!parsed.needsLogin) clearLogin()
-    if (desiredState !== -1 && running === (desiredState === 1)) desiredState = -1
-    // "Needs login" is not a state a toggle can leave; drop the optimistic
-    // switch position so the panel stops pretending it is connecting.
-    if (parsed.needsLogin) desiredState = -1
+    // Keep an optimistic request only while the daemon is genuinely moving
+    // toward it. This lets `Connecting` stay checked/busy, but prevents an
+    // `up` that settles back to Idle (or a completed `down`) from latching the
+    // switch in the requested position forever.
+    if (desiredState === 1 && !connecting) desiredState = -1
+    else if (desiredState === 0 && !running && !connecting) desiredState = -1
     statusText = parsed.statusText
     ip = parsed.ip
     fqdn = parsed.fqdn
@@ -176,12 +197,15 @@ Item {
   }
 
   readonly property int statusTimeoutSec: 8
+  readonly property int networkActionTimeoutSec: 20
 
   function startLogin() {
     if (!installed || loginProcess.running) return
     loginUrl = ""
     loginCode = ""
     loginOutput = ""
+    loginCancelled = false
+    loginStopStatus = ""
     loginActive = true
     actionStatus = "Starting NetBird login…"
     // --no-browser keeps the browser choice with Omarchy instead of letting
@@ -191,10 +215,22 @@ Item {
     loginTimeout.restart()
   }
 
-  function cancelLogin() {
-    if (loginProcess.running) loginProcess.running = false
+  function stopLogin(statusMessage) {
+    loginCancelled = true
+    loginStopStatus = String(statusMessage || "")
+    if (loginProcess.running) {
+      loginProcess.running = false
+    } else {
+      actionStatus = loginStopStatus
+      if (actionStatus !== "") messageTimer.restart()
+      loginCancelled = false
+      loginStopStatus = ""
+    }
     clearLogin()
-    actionStatus = ""
+  }
+
+  function cancelLogin() {
+    stopLogin("")
   }
 
   function clearLogin() {
@@ -221,7 +257,7 @@ Item {
   }
 
   function refreshNetworks() {
-    if (!installed || daemonDown || networksProcess.running) return
+    if (!installed || daemonDown || networksProcess.running || networkActionProcess.running) return
     networksOutput = ""
     networksErrorOutput = ""
     networksProcess.command = ["timeout", "-k", "2", String(statusTimeoutSec), "netbird", "networks", "list"]
@@ -239,17 +275,28 @@ Item {
     networksError = ""
   }
 
+  function prepareNetworkAction() {
+    if (!installed || networkActionProcess.running) return false
+    // Cancel and discard an older list snapshot. The action's exit handler
+    // starts a fresh list call after the daemon has applied the mutation.
+    if (networksProcess.running) {
+      discardNetworksResult = true
+      networksProcess.running = false
+    }
+    return true
+  }
+
   // `networks select` replaces the whole selection by default, so a single-row
   // toggle has to append (-a) on the way in and deselect by id on the way out.
   function setNetworkSelected(id, selected) {
     var networkId = String(id || "")
-    if (!installed || networkId === "" || networkActionProcess.running) return
+    if (networkId === "" || !prepareNetworkAction()) return
     pendingNetworkId = networkId
     networkActionOutput = ""
     networkActionError = ""
     networkActionProcess.command = selected
-      ? ["netbird", "networks", "select", "-a", networkId]
-      : ["netbird", "networks", "deselect", networkId]
+      ? ["timeout", "-k", "2", String(networkActionTimeoutSec), "netbird", "networks", "select", "-a", networkId]
+      : ["timeout", "-k", "2", String(networkActionTimeoutSec), "netbird", "networks", "deselect", networkId]
     networkActionProcess.running = true
   }
 
@@ -259,16 +306,16 @@ Item {
   }
 
   function selectAllNetworks() {
-    if (!installed || networkActionProcess.running) return
+    if (!prepareNetworkAction()) return
     pendingNetworkId = ""
-    networkActionProcess.command = ["netbird", "networks", "select", "all"]
+    networkActionProcess.command = ["timeout", "-k", "2", String(networkActionTimeoutSec), "netbird", "networks", "select", "all"]
     networkActionProcess.running = true
   }
 
   function deselectAllNetworks() {
-    if (!installed || networkActionProcess.running) return
+    if (!prepareNetworkAction()) return
     pendingNetworkId = ""
-    networkActionProcess.command = ["netbird", "networks", "deselect", "all"]
+    networkActionProcess.command = ["timeout", "-k", "2", String(networkActionTimeoutSec), "netbird", "networks", "deselect", "all"]
     networkActionProcess.running = true
   }
 
@@ -330,11 +377,7 @@ Item {
     id: loginTimeout
     interval: 300000
     repeat: false
-    onTriggered: if (root.loginActive) {
-      root.cancelLogin()
-      root.actionStatus = "Login timed out"
-      messageTimer.restart()
-    }
+    onTriggered: if (root.loginActive) root.stopLogin("Login timed out")
   }
 
   Timer {
@@ -407,9 +450,20 @@ Item {
     stdout: SplitParser { onRead: function(data) { root.handleLoginOutput(data) } }
     stderr: SplitParser { onRead: function(data) { root.handleLoginOutput(data) } }
     onExited: function(exitCode) {
+      var cancelled = root.loginCancelled
+      var stopStatus = root.loginStopStatus
       root.loginActive = false
+      root.loginCancelled = false
+      root.loginStopStatus = ""
       loginTimeout.stop()
-      if (exitCode !== 0 && root.loginUrl === "") {
+      if (cancelled) {
+        // User cancellation is quiet; timeout cancellation keeps its explicit
+        // explanation instead of being replaced by a process-exit error.
+        root.actionStatus = stopStatus
+        if (stopStatus !== "") messageTimer.restart()
+      } else if (exitCode !== 0) {
+        // A verification URL only means that login started. Authentication can
+        // still fail afterwards, so every non-cancelled non-zero exit matters.
         root.actionStatus = (String(root.loginOutput || "").replace(/\s+/g, " ").trim() || "NetBird login failed")
         messageTimer.restart()
       } else {
@@ -426,6 +480,14 @@ Item {
     stdout: StdioCollector { id: networksStdout; waitForEnd: true; onStreamFinished: root.networksOutput = text }
     stderr: StdioCollector { id: networksStderr; waitForEnd: true; onStreamFinished: root.networksErrorOutput = text }
     onExited: function(exitCode) {
+      if (root.discardNetworksResult) {
+        root.discardNetworksResult = false
+        // Usually the mutation is still running and its exit handler performs
+        // the refresh. If it already finished, ensure the discarded snapshot
+        // is still followed by a fresh one.
+        if (!networkActionProcess.running) Qt.callLater(function() { root.refreshNetworks() })
+        return
+      }
       var output = String(networksStdout.text || root.networksOutput || "")
       var error = String(networksStderr.text || root.networksErrorOutput || "").trim()
       if (exitCode === 0) root.applyNetworks(output)
@@ -447,7 +509,9 @@ Item {
       var error = String(networkActionStderr.text || root.networkActionError || "").trim()
       root.pendingNetworkId = ""
       if (exitCode !== 0) {
-        root.actionStatus = (error || output || "Network change failed").replace(/\s+/g, " ").trim()
+        root.actionStatus = exitCode === 124 || exitCode === 137
+          ? "Network change timed out"
+          : (error || output || "Network change failed").replace(/\s+/g, " ").trim()
         messageTimer.restart()
       }
       root.refreshNetworks()

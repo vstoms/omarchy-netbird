@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "vstoms.netbird",
   "name": "NetBird",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "Viggo Stomsvik",
   "license": "MIT",
   "description": "NetBird status, connection control, network selection, peer browsing, and quick actions for the Omarchy bar.",

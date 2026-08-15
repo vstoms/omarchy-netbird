@@ -385,7 +385,8 @@ Panel {
         else if (t === "s" || t === "S") netbird.ssh(root.selectedPeer())
         else if (t === "p" || t === "P") netbird.ping(root.selectedPeer())
         else if (t === "a" || t === "A") root.openAdmin()
-        else if (t === "w" || t === "W") netbird.toggleNetwork(root.selectedNetwork())
+        else if ((t === "w" || t === "W") && root.focusSection === "networks")
+          netbird.toggleNetwork(root.selectedNetwork())
         else if (t === "e" || t === "E") root.relaysExpanded = !root.relaysExpanded
         else if (t === "d" || t === "D") root.toggleDetails(root.selectedPeer())
         else if (t === "/") root.openSearch()
