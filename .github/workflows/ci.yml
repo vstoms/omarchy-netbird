@@ -11,11 +11,11 @@ jobs:
     name: Model tests and manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Model tests
         run: node test/model.test.js
@@ -56,30 +56,54 @@ jobs:
           found=$(find . -path ./.git -prune -o -type l -print)
           test -z "$found" || { echo "plugin folders may not contain symlinks:"; echo "$found"; exit 1; }
 
-  qml:
-    name: QML lint
+  qml-syntax:
+    name: QML syntax
     runs-on: ubuntu-latest
-    # The Omarchy shell provides the qs.Ui and qs.Commons modules this plugin
-    # imports, so linting needs a checkout of it. Tolerated for now: this job
-    # depends on an upstream branch and on Qt tooling package names that can
-    # move, and it must not be able to block an otherwise good change.
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: plugin
+      - uses: actions/checkout@v5
 
-      - name: Check out the Omarchy shell
-        uses: actions/checkout@v4
-        with:
-          repository: basecamp/omarchy
-          ref: quattro
-          path: omarchy
-
+      # qmlformat parses QML without resolving imports, so this catches syntax
+      # errors on a plain runner. Type checking needs Quickshell and the
+      # Omarchy shell, which is what the qml-lint job below is for.
       - name: Install Qt 6 QML tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y qt6-declarative-dev-tools
+
+      - name: Parse QML
+        run: |
+          qmlformat=$(command -v qmlformat6 || command -v /usr/lib/qt6/bin/qmlformat || true)
+          test -n "$qmlformat" || { echo "Qt 6 qmlformat not found"; exit 1; }
+          echo "using $qmlformat"
+          for file in Panel.qml Service.qml NetbirdIcon.qml; do
+            "$qmlformat" "$file" >/dev/null || { echo "failed to parse $file"; exit 1; }
+            echo "parsed $file"
+          done
+
+  qml-lint:
+    name: QML lint
+    runs-on: ubuntu-latest
+    # Arch ships both Qt 6 and Quickshell, which this plugin's imports need.
+    # Ubuntu has no Quickshell package, so type resolution fails there and
+    # every symbol is reported as unknown.
+    container: archlinux:latest
+    # Not a gate yet: this job pins an upstream branch and a distro image that
+    # can both move. Drop this line once it has been green for a while.
+    continue-on-error: true
+    steps:
+      - name: Install Qt 6, Quickshell and tools
+        run: pacman -Syu --noconfirm --needed qt6-declarative quickshell git
+
+      - uses: actions/checkout@v5
+        with:
+          path: plugin
+
+      - name: Check out the Omarchy shell
+        uses: actions/checkout@v5
+        with:
+          repository: basecamp/omarchy
+          ref: quattro
+          path: omarchy
 
       - name: Lint QML against the shell
         run: |
@@ -87,7 +111,5 @@ jobs:
           # has to be reachable under a directory named `qs`.
           mkdir -p lintroot
           ln -sfn "$GITHUB_WORKSPACE/omarchy/shell" lintroot/qs
-          qmllint=$(command -v qmllint6 || command -v qmllint || echo /usr/lib/qt6/bin/qmllint)
-          echo "using $qmllint"
-          "$qmllint" -I lintroot -I "$GITHUB_WORKSPACE/omarchy/shell" \
+          /usr/lib/qt6/bin/qmllint -I lintroot -I "$GITHUB_WORKSPACE/omarchy/shell" \
             plugin/Panel.qml plugin/Service.qml plugin/NetbirdIcon.qml
