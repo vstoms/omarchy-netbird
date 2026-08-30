@@ -29,7 +29,14 @@ Item {
   property bool versionMismatch: false
   property string ip: ""
   property string fqdn: ""
-  property string profileName: "default"
+  property var profiles: []
+  property string profilesError: ""
+  property string pendingProfileId: ""
+  // An active profile switch spans selection, status discovery, and reconnect.
+  // Keeping it explicit prevents transient Idle data leaking into the panel.
+  property bool profileTransitioning: false
+  property bool profileReconnectStarted: false
+  property string profileTransitionTarget: ""
   property bool managementConnected: false
   property bool signalConnected: false
   property int peerTotal: 0
@@ -71,7 +78,8 @@ Item {
   // minutes) so a stopped service costs one probe every few minutes instead
   // of a stuck process every 30 seconds.
   readonly property int effectiveIntervalSec: Math.min(300, refreshIntervalSec * Math.pow(2, Math.min(failureStreak, 4)))
-  readonly property bool busy: whichProcess.running || statusProcess.running || actionProcess.running || loginProcess.running
+  readonly property bool busy: whichProcess.running || statusProcess.running || actionProcess.running
+    || loginProcess.running || profileActionProcess.running || profileTransitioning
   readonly property bool relaysDegraded: relayTotal > 0 && relayAvailable < relayTotal
   readonly property int networksSelected: Model.selectedNetworkCount(networks)
   property string statusOutput: ""
@@ -85,6 +93,11 @@ Item {
   property bool discardNetworksResult: false
   property string networkActionOutput: ""
   property string networkActionError: ""
+  property bool discardStatusResult: false
+  property string profilesOutput: ""
+  property string profilesErrorOutput: ""
+  property string profileActionOutput: ""
+  property string profileActionError: ""
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -98,6 +111,7 @@ Item {
   }
 
   function clearStatus(message, newState) {
+    if (profileTransitioning) finishProfileTransition()
     running = false
     connecting = false
     // A cleared status is terminal for any optimistic switch position. In
@@ -154,7 +168,6 @@ Item {
     statusText = parsed.statusText
     ip = parsed.ip
     fqdn = parsed.fqdn
-    profileName = parsed.profileName
     managementConnected = parsed.managementConnected
     signalConnected = parsed.signalConnected
     peerTotal = parsed.peerTotal
@@ -165,6 +178,28 @@ Item {
     relayTotal = parsed.relayTotal
     relayAvailable = parsed.relayAvailable
     lastError = ""
+    if (profileTransitioning) {
+      var followup = Model.profileSwitchFollowup(connState)
+      if (followup === "connect") {
+        if (!profileReconnectStarted && !actionProcess.running) {
+          profileReconnectStarted = true
+          desiredState = 1
+          actionOutput = ""
+          actionError = ""
+          actionProcess.command = ["timeout", "-k", "2", "20", "netbird", "up"]
+          actionProcess.running = true
+        }
+      } else if (followup === "login") {
+        finishProfileTransition()
+        actionStatus = "Profile switched · login required"
+        messageTimer.restart()
+      } else if (followup === "complete") {
+        finishProfileTransition()
+      }
+      // `netbird up` may exit before the daemon reaches Connected. Poll only
+      // for the duration of this transition so completion feels immediate.
+      if (profileTransitioning && !actionProcess.running) delayedRefresh.restart()
+    }
     // Networks only exist while the daemon is up; refresh them alongside
     // status so the panel never shows a stale selection.
     if (running && wantNetworks) refreshNetworks()
@@ -198,9 +233,63 @@ Item {
 
   readonly property int statusTimeoutSec: 8
   readonly property int networkActionTimeoutSec: 20
+  readonly property int profileActionTimeoutSec: 20
+
+  function refreshProfiles() {
+    if (!installed || profilesProcess.running || profileActionProcess.running) return
+    profilesOutput = ""
+    profilesErrorOutput = ""
+    profilesProcess.command = ["timeout", "-k", "2", String(statusTimeoutSec), "netbird", "profile", "list", "--show-id"]
+    profilesProcess.running = true
+  }
+
+  function applyProfiles(raw) {
+    var parsed = Model.parseProfiles(raw)
+    if (!parsed.ok) {
+      profilesError = parsed.message || "Could not read profiles"
+      return
+    }
+    profiles = parsed.profiles
+    profilesError = ""
+  }
+
+  function selectProfile(profile) {
+    if (!profile || profile.active || profile.id === "" || !installed) return
+    // Profile selection changes the daemon's entire status and route view.
+    // Never overlap it with another mutating NetBird operation.
+    if (profileActionProcess.running || actionProcess.running || loginProcess.running
+        || networkActionProcess.running) return
+    profileTransitioning = active
+    profileReconnectStarted = false
+    profileTransitionTarget = profileTransitioning ? String(profile.name) : ""
+    if (profileTransitioning) profileTransitionTimeout.restart()
+    if (statusProcess.running) {
+      discardStatusResult = true
+      watchdog.stop()
+      statusProcess.running = false
+    }
+    if (networksProcess.running) {
+      discardNetworksResult = true
+      networksProcess.running = false
+    }
+    pendingProfileId = String(profile.id)
+    profileActionOutput = ""
+    profileActionError = ""
+    actionStatus = ""
+    profileActionProcess.command = ["timeout", "-k", "2", String(profileActionTimeoutSec),
+      "netbird", "profile", "select", pendingProfileId]
+    profileActionProcess.running = true
+  }
+
+  function finishProfileTransition() {
+    profileTransitioning = false
+    profileReconnectStarted = false
+    profileTransitionTarget = ""
+    profileTransitionTimeout.stop()
+  }
 
   function startLogin() {
-    if (!installed || loginProcess.running) return
+    if (!installed || loginProcess.running || profileActionProcess.running) return
     loginUrl = ""
     loginCode = ""
     loginOutput = ""
@@ -276,7 +365,7 @@ Item {
   }
 
   function prepareNetworkAction() {
-    if (!installed || networkActionProcess.running) return false
+    if (!installed || networkActionProcess.running || profileActionProcess.running) return false
     // Cancel and discard an older list snapshot. The action's exit handler
     // starts a fresh list call after the daemon has applied the mutation.
     if (networksProcess.running) {
@@ -320,7 +409,7 @@ Item {
   }
 
   function toggleNetbird() {
-    if (!installed || actionProcess.running) return
+    if (!installed || actionProcess.running || profileActionProcess.running) return
     // Turning on while the daemon wants credentials is a login, not an `up`:
     // plain `netbird up` would block on the SSO flow with nothing on screen.
     if (!active && needsLogin) {
@@ -373,6 +462,27 @@ Item {
   }
 
   Timer {
+    // NetBird rotates profile state while applying a selection. Listing too
+    // early can observe that transition instead of the settled active marker.
+    id: profileRefresh
+    interval: 1000
+    repeat: false
+    onTriggered: root.refreshProfiles()
+  }
+
+  Timer {
+    id: profileTransitionTimeout
+    interval: 45000
+    repeat: false
+    onTriggered: {
+      root.finishProfileTransition()
+      root.desiredState = -1
+      root.actionStatus = "Profile switch timed out"
+      messageTimer.restart()
+    }
+  }
+
+  Timer {
     // An abandoned SSO flow would otherwise keep `netbird up` alive forever.
     id: loginTimeout
     interval: 300000
@@ -422,6 +532,10 @@ Item {
     onExited: function(exitCode) {
       watchdog.stop()
       root.refreshing = false
+      if (root.discardStatusResult) {
+        root.discardStatusResult = false
+        return
+      }
       var output = String(statusStdout.text || root.statusOutput || "")
       var error = String(statusStderr.text || root.statusError || "").trim()
       if (exitCode === 0) {
@@ -438,6 +552,59 @@ Item {
         root.clearStatus("", "idle")
         root.lastError = error
       }
+    }
+  }
+
+  Process {
+    id: profilesProcess
+    running: false
+    stdout: StdioCollector { id: profilesStdout; waitForEnd: true; onStreamFinished: root.profilesOutput = text }
+    stderr: StdioCollector { id: profilesStderr; waitForEnd: true; onStreamFinished: root.profilesErrorOutput = text }
+    onExited: function(exitCode) {
+      var output = String(profilesStdout.text || root.profilesOutput || "")
+      var error = String(profilesStderr.text || root.profilesErrorOutput || "").trim()
+      if (exitCode === 0) root.applyProfiles(output)
+      else {
+        // A profile switch briefly rotates the underlying profile files. Keep
+        // the last known list visible if a refresh lands in that window; the
+        // delayed retry below will replace it with authoritative data.
+        root.profilesError = (error || "Could not list profiles").replace(/\s+/g, " ").trim()
+      }
+    }
+  }
+
+  Process {
+    id: profileActionProcess
+    running: false
+    stdout: StdioCollector { id: profileActionStdout; waitForEnd: true; onStreamFinished: root.profileActionOutput = text }
+    stderr: StdioCollector { id: profileActionStderr; waitForEnd: true; onStreamFinished: root.profileActionError = text }
+    onExited: function(exitCode) {
+      var output = String(profileActionStdout.text || root.profileActionOutput || "")
+      var error = String(profileActionStderr.text || root.profileActionError || "").trim()
+      var selectedId = root.pendingProfileId
+      root.pendingProfileId = ""
+      if (exitCode !== 0) {
+        root.finishProfileTransition()
+        root.actionStatus = exitCode === 124 || exitCode === 137
+          ? "Profile switch timed out"
+          : (error || output || "Profile switch failed").replace(/\s+/g, " ").trim()
+        messageTimer.restart()
+      } else {
+        root.actionStatus = ""
+        root.desiredState = -1
+        root.networks = []
+        root.networksLoaded = false
+        // Mark the selected row immediately; the list/status refresh below is
+        // still authoritative and replaces this optimistic state.
+        var updated = []
+        for (var i = 0; i < root.profiles.length; i++) {
+          var item = root.profiles[i]
+          updated.push({ id: item.id, name: item.name, active: item.id === selectedId })
+        }
+        root.profiles = updated
+      }
+      profileRefresh.restart()
+      delayedRefresh.restart()
     }
   }
 
@@ -533,6 +700,7 @@ Item {
         root.desiredState = -1
         root.lastError = (error || output || "NetBird command failed").replace(/\s+/g, " ").trim()
         root.actionStatus = root.lastError
+        if (root.profileTransitioning) root.finishProfileTransition()
         messageTimer.restart()
       } else {
         root.lastError = ""

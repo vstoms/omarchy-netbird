@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-29
+
+### Added
+
+- Profiles section listing every NetBird client profile and marking the active
+  profile with a persistent selected-row background, with mouse and keyboard
+  switching.
+- Profile listing and selection IPC commands.
+
+### Changed
+
+- Profile switches use stable profile IDs, serialize against other mutating
+  NetBird actions, and refresh status, routes, and the profile list after the
+  profile-file transition settles.
+- Refresh actions now update both connection status and client profiles.
+- Profile switching preserves connection intent: an inactive client stays
+  inactive, while switching from an active profile automatically brings up the
+  newly selected profile after the old one has been replaced.
+- Inactive profile switches update immediately without showing a transient
+  switching label; progress styling is reserved for active reconnections.
+- Active-profile transitions use a fixed-height progress view instead of
+  briefly exposing stale disconnected details.
+
 ## [2.0.1] - 2026-08-15
 
 ### Changed
@@ -90,4 +113,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shortcut, keyboard navigation, and IPC commands.
 
 [2.0.1]: https://github.com/vstoms/omarchy-netbird/compare/v2.0.0...v2.0.1
+[2.1.0]: https://github.com/vstoms/omarchy-netbird/compare/v2.0.1...v2.1.0
 [2.0.0]: https://github.com/vstoms/omarchy-netbird/releases/tag/v2.0.0

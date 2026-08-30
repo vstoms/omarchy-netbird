@@ -13,6 +13,7 @@ A native [Omarchy](https://omarchy.org/) bar plugin for [NetBird](https://netbir
 - Guided SSO login, with the verification code and URL in the panel
 - Distinct handling for daemon down, login required, and expired sessions
 - NetBird IP, profile, management, signal, and relay status
+- List available client profiles and switch the active profile from the panel
 - Select and deselect networks and resources (routes)
 - Connected, connecting, and disconnected peer list
 - Peer search by name, IP, connection type, or routed subnet
@@ -31,6 +32,11 @@ A native [Omarchy](https://omarchy.org/) bar plugin for [NetBird](https://netbir
 - `wl-copy` for clipboard actions (included with Omarchy)
 
 The plugin does not install packages, create services, request elevated privileges, or overwrite user configuration. It runs `netbird status --json`, `netbird up`, and `netbird down` as the logged-in user. SSH and ping actions open in Omarchy's configured terminal.
+
+Profile switching preserves connection intent: switching while NetBird is off
+leaves the new profile off; switching while it is connected selects the new
+profile and brings that profile up. A profile that has not authenticated yet
+is left at **Login required** so its guided login can be completed explicitly.
 
 Pre-authentication is optional. If NetBird needs credentials, open the panel and choose **Log in**; the plugin starts the device login, opens the verification page, and shows the code. You can still authenticate manually if preferred:
 
@@ -83,6 +89,7 @@ With the panel open:
 
 - `j` / `k` or arrows: move
 - `enter` / `space`: toggle NetBird, toggle the selected network, or copy the selected peer IP
+- On a profile row, `enter` / `space` switches to that profile
 - `w`: select/deselect the highlighted network
 - `d`: show or hide details for the selected peer
 - `/`: search peers (`esc` clears and leaves the field)
@@ -180,6 +187,8 @@ omarchy-shell vstoms.netbird relays
 omarchy-shell vstoms.netbird networks
 omarchy-shell vstoms.netbird selectNetwork <id>
 omarchy-shell vstoms.netbird deselectNetwork <id>
+omarchy-shell vstoms.netbird profiles
+omarchy-shell vstoms.netbird selectProfile <id-or-name>
 ```
 
 ## Development

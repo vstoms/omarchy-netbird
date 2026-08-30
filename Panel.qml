@@ -15,6 +15,7 @@ Panel {
 
   property int peerIndex: 0
   property int networkIndex: 0
+  property int profileIndex: 0
   property bool cursorActive: false
   property string focusSection: "header"
   property bool relaysExpanded: false
@@ -40,7 +41,10 @@ Panel {
   readonly property var visiblePeers: filteredPeers()
   readonly property var visibleNetworks: showNetworks && netbird.active ? netbird.networks : []
   readonly property bool hasNetworks: visibleNetworks.length > 0
+  readonly property var visibleProfiles: netbird.profiles
+  readonly property bool hasProfiles: visibleProfiles.length > 1
   readonly property bool monochromeIcon: settingBool("monochromeIcon", true)
+  readonly property bool detailsLoading: netbird.profileTransitioning
   // Connected, but something underneath is unhealthy. Worth surfacing in the
   // bar: today this only shows up if you open the panel and read the rows.
   readonly property bool degraded: netbird.running
@@ -111,13 +115,23 @@ Panel {
     return visibleNetworks[Math.max(0, Math.min(networkIndex, visibleNetworks.length - 1))]
   }
 
+  function selectedProfile() {
+    if (visibleProfiles.length === 0) return null
+    return visibleProfiles[Math.max(0, Math.min(profileIndex, visibleProfiles.length - 1))]
+  }
+
   // Sections collapse when empty, so the cursor is kept on a section that is
   // actually on screen before and after every move.
   function ensureCursor() {
     if (peerIndex >= visiblePeers.length) peerIndex = Math.max(0, visiblePeers.length - 1)
     if (networkIndex >= visibleNetworks.length) networkIndex = Math.max(0, visibleNetworks.length - 1)
-    if (focusSection === "peers" && visiblePeers.length === 0) focusSection = hasNetworks ? "networks" : "header"
-    if (focusSection === "networks" && !hasNetworks) focusSection = visiblePeers.length > 0 ? "peers" : "header"
+    if (profileIndex >= visibleProfiles.length) profileIndex = Math.max(0, visibleProfiles.length - 1)
+    if (focusSection === "peers" && visiblePeers.length === 0)
+      focusSection = hasNetworks ? "networks" : (hasProfiles ? "profiles" : "header")
+    if (focusSection === "networks" && !hasNetworks)
+      focusSection = visiblePeers.length > 0 ? "peers" : (hasProfiles ? "profiles" : "header")
+    if (focusSection === "profiles" && !hasProfiles)
+      focusSection = hasNetworks ? "networks" : (visiblePeers.length > 0 ? "peers" : "header")
     if (focusSection === "state" && stateActionLabel === "") focusSection = "header"
   }
 
@@ -129,16 +143,34 @@ Panel {
     if (focusSection === "header") {
       if (delta > 0) {
         if (hasStateAction) focusSection = "state"
+        else if (hasProfiles) { focusSection = "profiles"; profileIndex = 0 }
         else if (hasNetworks) { focusSection = "networks"; networkIndex = 0 }
         else if (visiblePeers.length > 0) { focusSection = "peers"; peerIndex = 0 }
       }
     } else if (focusSection === "state") {
       if (delta < 0) focusSection = "header"
+      else if (hasProfiles) { focusSection = "profiles"; profileIndex = 0 }
       else if (hasNetworks) { focusSection = "networks"; networkIndex = 0 }
       else if (visiblePeers.length > 0) { focusSection = "peers"; peerIndex = 0 }
+    } else if (focusSection === "profiles") {
+      if (delta < 0) {
+        if (profileIndex <= 0) focusSection = hasStateAction ? "state" : "header"
+        else profileIndex--
+      } else if (profileIndex < visibleProfiles.length - 1) {
+        profileIndex++
+      } else if (hasNetworks) {
+        focusSection = "networks"
+        networkIndex = 0
+      } else if (visiblePeers.length > 0) {
+        focusSection = "peers"
+        peerIndex = 0
+      }
     } else if (focusSection === "networks") {
       if (delta < 0) {
-        if (networkIndex <= 0) focusSection = hasStateAction ? "state" : "header"
+        if (networkIndex <= 0) {
+          if (hasProfiles) { focusSection = "profiles"; profileIndex = visibleProfiles.length - 1 }
+          else focusSection = hasStateAction ? "state" : "header"
+        }
         else networkIndex--
       } else if (networkIndex < visibleNetworks.length - 1) {
         networkIndex++
@@ -150,6 +182,7 @@ Panel {
       if (delta < 0) {
         if (peerIndex <= 0) {
           if (hasNetworks) { focusSection = "networks"; networkIndex = visibleNetworks.length - 1 }
+          else if (hasProfiles) { focusSection = "profiles"; profileIndex = visibleProfiles.length - 1 }
           else focusSection = hasStateAction ? "state" : "header"
         } else peerIndex--
       } else if (peerIndex < visiblePeers.length - 1) {
@@ -164,6 +197,7 @@ Panel {
     ensureCursor()
     if (focusSection === "header") netbird.toggleNetbird()
     else if (focusSection === "state") runStateAction()
+    else if (focusSection === "profiles") netbird.selectProfile(selectedProfile())
     else if (focusSection === "networks") netbird.toggleNetwork(selectedNetwork())
     else netbird.copyPeerIp(selectedPeer())
   }
@@ -178,6 +212,12 @@ Panel {
     cursorActive = true
     focusSection = "networks"
     networkIndex = index
+  }
+
+  function setProfileCursor(index) {
+    cursorActive = true
+    focusSection = "profiles"
+    profileIndex = index
   }
 
   function scrollItemIntoView(item) {
@@ -198,6 +238,8 @@ Panel {
       scrollItemIntoView(peerColumn.children[peerIndex])
     else if (focusSection === "networks" && networkColumn && networkIndex >= 0 && networkIndex < networkColumn.children.length)
       scrollItemIntoView(networkColumn.children[networkIndex])
+    else if (focusSection === "profiles" && profileColumn && profileIndex >= 0 && profileIndex < profileColumn.children.length)
+      scrollItemIntoView(profileColumn.children[profileIndex])
   }
 
   function runStateAction() {
@@ -278,16 +320,19 @@ Panel {
     expandedPeerKey = ""
     peerIndex = 0
     networkIndex = 0
+    profileIndex = 0
     relaysExpanded = false
     panelFlick.contentY = 0
     netbird.refresh()
     // `wantNetworks` is bound to `opened`, but binding vs. handler order is not
     // guaranteed, so ask for the list explicitly on the way in.
     if (showNetworks) netbird.refreshNetworks()
+    netbird.refreshProfiles()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onVisiblePeersChanged: ensureCursor()
   onVisibleNetworksChanged: ensureCursor()
+  onVisibleProfilesChanged: ensureCursor()
 
   Service {
     id: netbird
@@ -309,11 +354,28 @@ Panel {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
-    function refresh(): string { netbird.refresh(); return "ok" }
+    function refresh(): string { netbird.refresh(); netbird.refreshProfiles(); return "ok" }
     function up(): string { if (!netbird.active) netbird.toggleNetbird(); return "ok" }
     function down(): string { if (netbird.active) netbird.toggleNetbird(); return "ok" }
     function toggleNetbird(): string { netbird.toggleNetbird(); return "ok" }
     function status(): string { return netbird.statusText }
+    function profiles(): string {
+      var lines = []
+      for (var i = 0; i < netbird.profiles.length; i++) {
+        var profile = netbird.profiles[i]
+        lines.push((profile.active ? "[x] " : "[ ] ") + profile.name + "\t" + profile.id)
+      }
+      return lines.length > 0 ? lines.join("\n") : "No profiles available."
+    }
+    function selectProfile(id: string): string {
+      for (var i = 0; i < netbird.profiles.length; i++) {
+        if (netbird.profiles[i].id === id || netbird.profiles[i].name === id) {
+          netbird.selectProfile(netbird.profiles[i])
+          return "ok"
+        }
+      }
+      return "unknown profile"
+    }
     function networks(): string {
       var lines = []
       for (var i = 0; i < netbird.networks.length; i++) {
@@ -351,7 +413,7 @@ Panel {
     }
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) netbird.toggleNetbird()
-      else if (buttonCode === Qt.MiddleButton) netbird.refresh()
+      else if (buttonCode === Qt.MiddleButton) { netbird.refresh(); netbird.refreshProfiles() }
       else root.toggle()
     }
   }
@@ -379,7 +441,7 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "t" || t === "T") netbird.toggleNetbird()
-        else if (t === "r" || t === "R") netbird.refresh()
+        else if (t === "r" || t === "R") { netbird.refresh(); netbird.refreshProfiles() }
         else if (t === "c" || t === "C") netbird.copyPeerIp(root.selectedPeer())
         else if (t === "n" || t === "N") netbird.copyPeerName(root.selectedPeer())
         else if (t === "s" || t === "S") netbird.ssh(root.selectedPeer())
@@ -409,268 +471,367 @@ Panel {
           spacing: Style.space(12)
 
           Item {
-            id: header
+            id: detailsSlot
             width: parent.width
-            implicitHeight: hero.implicitHeight
+            property real reservedHeight: 0
+            implicitHeight: root.detailsLoading
+              ? Math.max(reservedHeight, Style.space(140))
+              : detailsContent.implicitHeight
 
-            PanelHero {
-              id: hero
-              width: parent.width
-              title: netbird.fqdn || "NetBird"
-              meta: netbird.active
-                ? netbird.peerConnected + "/" + netbird.peerTotal + " peers connected"
-                  + (netbird.peerConnecting > 0 ? " · " + netbird.peerConnecting + " connecting" : "")
-                : netbird.statusText
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              iconOpacity: netbird.active ? 1 : 0.5
-              iconComponent: Component {
-                NetbirdIcon {
-                  iconSize: Style.font.display
-                  monochrome: root.monochromeIcon
-                  color: root.foreground
-                  slashColor: root.foreground
-                  crossed: !netbird.active
-                }
+            Connections {
+              target: root
+              function onDetailsLoadingChanged() {
+                if (root.detailsLoading)
+                  detailsSlot.reservedHeight = detailsContent.implicitHeight
               }
-              trailingControl: Component {
-                ToggleSwitch {
-                  id: powerSwitch
-                  visible: netbird.installed
-                  checked: netbird.active
-                  busy: netbird.busy || netbird.connecting
-                  hasCursor: root.headerHasCursor
-                  foreground: hero.foreground
-                  onHovered: function(on) { if (on) { root.cursorActive = true; root.focusSection = "header" } }
-                  onToggled: netbird.toggleNetbird()
-                  PanelToolTip {
-                    visible: powerSwitch.containsMouse
-                    text: netbird.active
-                      ? "Disconnect NetBird"
-                      : (netbird.needsLogin ? "Log in to NetBird" : "Connect NetBird")
-                    fontFamily: hero.fontFamily
-                  }
-                }
-              }
-            }
-          }
-
-          Text {
-            visible: netbird.actionStatus !== "" || netbird.lastError !== ""
-            width: parent.width
-            text: netbird.actionStatus !== "" ? netbird.actionStatus : netbird.lastError
-            color: netbird.lastError !== "" && netbird.actionStatus === "" ? root.urgent : root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            wrapMode: Text.WordWrap
-          }
-
-          // One card for every state the daemon cannot fix by itself: not
-          // installed, daemon down, needs login, session expired. Each one
-          // gets the action that actually resolves it.
-          CursorSurface {
-            id: stateCard
-            visible: root.showStateCard
-            width: parent.width
-            implicitHeight: stateColumn.implicitHeight + Style.space(20)
-            hasCursor: root.cursorActive && root.focusSection === "state"
-            foreground: root.foreground
-
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
-              acceptedButtons: Qt.NoButton
-              onEntered: if (root.stateActionLabel !== "") { root.cursorActive = true; root.focusSection = "state" }
             }
 
             Column {
-              id: stateColumn
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.leftMargin: Style.space(12)
-              anchors.rightMargin: Style.space(12)
-              spacing: Style.space(8)
+              id: detailsContent
+              width: parent.width
+              spacing: Style.space(12)
+              enabled: !root.detailsLoading
+              opacity: root.detailsLoading ? 0 : 1
+
+              Item {
+                id: header
+                width: parent.width
+                implicitHeight: hero.implicitHeight
+
+                PanelHero {
+                  id: hero
+                  width: parent.width
+                  title: netbird.fqdn || "NetBird"
+                  meta: netbird.active
+                    ? netbird.peerConnected + "/" + netbird.peerTotal + " peers connected"
+                      + (netbird.peerConnecting > 0 ? " · " + netbird.peerConnecting + " connecting" : "")
+                    : netbird.statusText
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  iconOpacity: netbird.active ? 1 : 0.5
+                  iconComponent: Component {
+                    NetbirdIcon {
+                      iconSize: Style.font.display
+                      monochrome: root.monochromeIcon
+                      color: root.foreground
+                      slashColor: root.foreground
+                      crossed: !netbird.active
+                    }
+                  }
+                  trailingControl: Component {
+                    ToggleSwitch {
+                      id: powerSwitch
+                      visible: netbird.installed
+                      checked: netbird.active
+                      busy: netbird.busy || netbird.connecting
+                      hasCursor: root.headerHasCursor
+                      foreground: hero.foreground
+                      onHovered: function(on) { if (on) { root.cursorActive = true; root.focusSection = "header" } }
+                      onToggled: netbird.toggleNetbird()
+                      PanelToolTip {
+                        visible: powerSwitch.containsMouse
+                        text: netbird.active
+                          ? "Disconnect NetBird"
+                          : (netbird.needsLogin ? "Log in to NetBird" : "Connect NetBird")
+                        fontFamily: hero.fontFamily
+                      }
+                    }
+                  }
+                }
+              }
 
               Text {
+                visible: netbird.actionStatus !== "" || netbird.lastError !== ""
                 width: parent.width
-                text: netbird.hint !== "" ? netbird.hint : netbird.statusText
-                color: root.dim
+                text: netbird.actionStatus !== "" ? netbird.actionStatus : netbird.lastError
+                color: netbird.lastError !== "" && netbird.actionStatus === "" ? root.urgent : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.WordWrap
               }
 
-              // While a login is running the code is the thing the user has
-              // to read off the screen, so it gets the prominent treatment.
-              Text {
-                visible: netbird.loginCode !== ""
-                text: "Code: " + netbird.loginCode
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.subtitle
+              // One card for every state the daemon cannot fix by itself: not
+              // installed, daemon down, needs login, session expired. Each one
+              // gets the action that actually resolves it.
+              CursorSurface {
+                id: stateCard
+                visible: root.showStateCard
+                width: parent.width
+                implicitHeight: stateColumn.implicitHeight + Style.space(20)
+                hasCursor: root.cursorActive && root.focusSection === "state"
+                foreground: root.foreground
+
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  acceptedButtons: Qt.NoButton
+                  onEntered: if (root.stateActionLabel !== "") { root.cursorActive = true; root.focusSection = "state" }
+                }
+
+                Column {
+                  id: stateColumn
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  anchors.leftMargin: Style.space(12)
+                  anchors.rightMargin: Style.space(12)
+                  spacing: Style.space(8)
+
+                  Text {
+                    width: parent.width
+                    text: netbird.hint !== "" ? netbird.hint : netbird.statusText
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    wrapMode: Text.WordWrap
+                  }
+
+                  // While a login is running the code is the thing the user has
+                  // to read off the screen, so it gets the prominent treatment.
+                  Text {
+                    visible: netbird.loginCode !== ""
+                    text: "Code: " + netbird.loginCode
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.subtitle
+                  }
+
+                  Text {
+                    visible: netbird.loginActive && netbird.loginUrl === ""
+                    width: parent.width
+                    text: "Waiting for the login URL…"
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  Text {
+                    visible: netbird.daemonDown
+                    width: parent.width
+                    text: root.daemonStartCommand
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    elide: Text.ElideRight
+                  }
+
+                  RowLayout {
+                    width: parent.width
+                    spacing: Style.space(6)
+
+                    Button {
+                      visible: root.stateActionLabel !== ""
+                      text: root.stateActionLabel
+                      hasCursor: root.cursorActive && root.focusSection === "state"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: root.runStateAction()
+                      onHovered: function(on) { if (on) { root.cursorActive = true; root.focusSection = "state" } }
+                    }
+                    Button {
+                      visible: netbird.daemonDown
+                      text: "Copy command"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: netbird.copy(root.daemonStartCommand)
+                    }
+                    Button {
+                      visible: netbird.loginActive
+                      text: "Cancel"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: netbird.cancelLogin()
+                    }
+                    Item { Layout.fillWidth: true }
+                  }
+                }
               }
 
+              // A CLI and daemon on different versions is a real source of odd
+              // behaviour, and both numbers are already in the status payload.
               Text {
-                visible: netbird.loginActive && netbird.loginUrl === ""
+                visible: netbird.versionMismatch
                 width: parent.width
-                text: "Waiting for the login URL…"
+                text: "CLI " + netbird.cliVersion + " and daemon " + netbird.daemonVersion
+                  + " versions differ. Restart the NetBird service after an update."
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
               }
+
+              GridLayout {
+                visible: netbird.installed && netbird.active
+                width: parent.width
+                columns: 2
+                columnSpacing: Style.space(16)
+                rowSpacing: Style.space(5)
+
+                StatusLabel { text: "NetBird IP" }
+                StatusValue {
+                  text: netbird.ip || "—"
+                  MouseArea {
+                    anchors.fill: parent
+                    enabled: netbird.ip !== ""
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: netbird.copy(netbird.ip)
+                  }
+                }
+                StatusLabel { text: "Management" }
+                StatusValue {
+                  text: netbird.managementConnected ? "Connected" : "Disconnected"
+                  color: netbird.managementConnected ? root.foreground : root.urgent
+                }
+                StatusLabel { text: "Signal" }
+                StatusValue {
+                  text: netbird.signalConnected ? "Connected" : "Disconnected"
+                  color: netbird.signalConnected ? root.foreground : root.urgent
+                }
+                StatusLabel {
+                  text: "Relays"
+                  visible: netbird.relayTotal > 0
+                }
+                StatusValue {
+                  id: relayValue
+                  visible: netbird.relayTotal > 0
+                  text: netbird.relayAvailable + "/" + netbird.relayTotal + " available  "
+                    + (root.relaysExpanded ? "󰅃" : "󰅀")
+                  color: netbird.relaysDegraded ? root.urgent : root.foreground
+                  MouseArea {
+                    id: relayMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.relaysExpanded = !root.relaysExpanded
+                  }
+                  PanelToolTip {
+                    visible: relayMouse.containsMouse
+                    text: root.relayTooltip()
+                    fontFamily: root.fontFamily
+                  }
+                }
+              }
+
+              // Relay detail stays collapsed by default: it only matters when a
+              // peer is stuck relayed or unreachable, and it is five extra rows.
+              Column {
+                visible: netbird.installed && netbird.active && root.relaysExpanded && netbird.relays.length > 0
+                width: parent.width
+                spacing: Style.space(3)
+
+                Repeater {
+                  model: netbird.relays
+                  RowLayout {
+                    required property var modelData
+                    width: parent.width
+                    spacing: Style.space(8)
+
+                    Text {
+                      text: modelData.available ? "󰄴" : "󰅙"
+                      color: modelData.available ? root.dim : root.urgent
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+                    Text {
+                      Layout.fillWidth: true
+                      text: modelData.name
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      elide: Text.ElideRight
+                    }
+                    Text {
+                      text: modelData.error !== "" ? modelData.error : modelData.scheme
+                      color: modelData.error !== "" ? root.urgent : root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      elide: Text.ElideRight
+                      Layout.maximumWidth: parent.width * 0.45
+                    }
+                  }
+                }
+              }
+
+              PanelSeparator {
+                visible: netbird.installed && netbird.active
+                foreground: root.foreground
+              }
+            }
+
+            Column {
+              anchors.centerIn: parent
+              width: parent.width
+              spacing: Style.space(8)
+              visible: root.detailsLoading
 
               Text {
-                visible: netbird.daemonDown
-                width: parent.width
-                text: root.daemonStartCommand
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "󰑓"
                 color: root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.display
+                transformOrigin: Item.Center
+                RotationAnimator on rotation {
+                  from: 0
+                  to: 360
+                  duration: 900
+                  loops: Animation.Infinite
+                  running: root.detailsLoading
+                }
+              }
+              Text {
+                width: parent.width
+                text: "Switching to " + netbird.profileTransitionTarget + "…"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.subtitle
+                horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
               }
-
-              RowLayout {
-                width: parent.width
-                spacing: Style.space(6)
-
-                Button {
-                  visible: root.stateActionLabel !== ""
-                  text: root.stateActionLabel
-                  hasCursor: root.cursorActive && root.focusSection === "state"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: root.runStateAction()
-                  onHovered: function(on) { if (on) { root.cursorActive = true; root.focusSection = "state" } }
-                }
-                Button {
-                  visible: netbird.daemonDown
-                  text: "Copy command"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: netbird.copy(root.daemonStartCommand)
-                }
-                Button {
-                  visible: netbird.loginActive
-                  text: "Cancel"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: netbird.cancelLogin()
-                }
-                Item { Layout.fillWidth: true }
-              }
             }
           }
 
-          // A CLI and daemon on different versions is a real source of odd
-          // behaviour, and both numbers are already in the status payload.
-          Text {
-            visible: netbird.versionMismatch
-            width: parent.width
-            text: "CLI " + netbird.cliVersion + " and daemon " + netbird.daemonVersion
-              + " versions differ. Restart the NetBird service after an update."
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            wrapMode: Text.WordWrap
-          }
-
-          GridLayout {
-            visible: netbird.installed && netbird.active
-            width: parent.width
-            columns: 2
-            columnSpacing: Style.space(16)
-            rowSpacing: Style.space(5)
-
-            StatusLabel { text: "NetBird IP" }
-            StatusValue {
-              text: netbird.ip || "—"
-              MouseArea {
-                anchors.fill: parent
-                enabled: netbird.ip !== ""
-                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: netbird.copy(netbird.ip)
-              }
-            }
-            StatusLabel { text: "Profile" }
-            StatusValue { text: netbird.profileName || "default" }
-            StatusLabel { text: "Management" }
-            StatusValue {
-              text: netbird.managementConnected ? "Connected" : "Disconnected"
-              color: netbird.managementConnected ? root.foreground : root.urgent
-            }
-            StatusLabel { text: "Signal" }
-            StatusValue {
-              text: netbird.signalConnected ? "Connected" : "Disconnected"
-              color: netbird.signalConnected ? root.foreground : root.urgent
-            }
-            StatusLabel {
-              text: "Relays"
-              visible: netbird.relayTotal > 0
-            }
-            StatusValue {
-              id: relayValue
-              visible: netbird.relayTotal > 0
-              text: netbird.relayAvailable + "/" + netbird.relayTotal + " available  "
-                + (root.relaysExpanded ? "󰅃" : "󰅀")
-              color: netbird.relaysDegraded ? root.urgent : root.foreground
-              MouseArea {
-                id: relayMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.relaysExpanded = !root.relaysExpanded
-              }
-              PanelToolTip {
-                visible: relayMouse.containsMouse
-                text: root.relayTooltip()
-                fontFamily: root.fontFamily
-              }
-            }
-          }
-
-          // Relay detail stays collapsed by default: it only matters when a
-          // peer is stuck relayed or unreachable, and it is five extra rows.
           Column {
-            visible: netbird.installed && netbird.active && root.relaysExpanded && netbird.relays.length > 0
+            visible: netbird.installed && (root.hasProfiles || netbird.profilesError !== "")
             width: parent.width
-            spacing: Style.space(3)
+            spacing: Style.space(10)
 
-            Repeater {
-              model: netbird.relays
-              RowLayout {
-                required property var modelData
-                width: parent.width
-                spacing: Style.space(8)
+            PanelSectionHeader {
+              text: "PROFILES"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
 
-                Text {
-                  text: modelData.available ? "󰄴" : "󰅙"
-                  color: modelData.available ? root.dim : root.urgent
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-                Text {
-                  Layout.fillWidth: true
-                  text: modelData.name
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
-                }
-                Text {
-                  text: modelData.error !== "" ? modelData.error : modelData.scheme
-                  color: modelData.error !== "" ? root.urgent : root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
-                  Layout.maximumWidth: parent.width * 0.45
+            Text {
+              visible: netbird.profilesError !== ""
+              width: parent.width
+              text: netbird.profilesError
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+
+            Column {
+              id: profileColumn
+              width: parent.width
+              spacing: Style.space(6)
+
+              Repeater {
+                model: root.visibleProfiles
+                ProfileRow {
+                  required property var modelData
+                  required property int index
+                  width: profileColumn.width
+                  profile: modelData
+                  rowIndex: index
                 }
               }
             }
           }
 
           PanelSeparator {
-            visible: netbird.installed && netbird.active
+            visible: netbird.installed && root.hasProfiles
             foreground: root.foreground
           }
 
@@ -883,6 +1044,59 @@ Panel {
     horizontalAlignment: Text.AlignRight
     elide: Text.ElideRight
     Layout.fillWidth: true
+  }
+
+  component ProfileRow: CursorSurface {
+    id: profileRow
+    property var profile: null
+    property int rowIndex: 0
+    readonly property bool pending: netbird.profileTransitioning
+      && netbird.pendingProfileId === (profile ? profile.id : "")
+
+    hasCursor: root.cursorActive && root.focusSection === "profiles" && root.profileIndex === rowIndex
+    current: profile && profile.active
+    foreground: root.foreground
+    implicitHeight: profileContent.implicitHeight + Style.spacing.rowPaddingX
+    opacity: netbird.profileTransitioning && netbird.pendingProfileId !== "" && !pending ? 0.55 : 1
+
+    MouseArea {
+      anchors.fill: parent
+      enabled: profileRow.profile && !profileRow.profile.active && netbird.pendingProfileId === ""
+      hoverEnabled: true
+      cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onEntered: root.setProfileCursor(profileRow.rowIndex)
+      onClicked: netbird.selectProfile(profileRow.profile)
+    }
+
+    RowLayout {
+      id: profileContent
+      anchors.fill: parent
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(8)
+      spacing: Style.space(8)
+
+      Text {
+        text: profileRow.pending ? "󰑐" : (profileRow.profile && profileRow.profile.active ? "󰄴" : "󰘽")
+        color: profileRow.profile && profileRow.profile.active ? root.foreground : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.icon
+        Layout.alignment: Qt.AlignVCenter
+      }
+      Text {
+        Layout.fillWidth: true
+        text: profileRow.profile ? profileRow.profile.name : ""
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+      Text {
+        text: profileRow.pending ? "Switching…" : (profileRow.profile && profileRow.profile.active ? "Active" : "Switch")
+        color: profileRow.pending ? root.pending : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+    }
   }
 
   component NetworkRow: CursorSurface {
