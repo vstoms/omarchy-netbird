@@ -44,7 +44,7 @@ Panel {
   readonly property var visibleProfiles: netbird.profiles
   readonly property bool hasProfiles: visibleProfiles.length > 1
   readonly property bool monochromeIcon: settingBool("monochromeIcon", true)
-  readonly property bool detailsLoading: netbird.profileTransitioning
+  readonly property bool detailsLoading: netbird.profileTransitioning || netbird.connectionTransitioning
   // Connected, but something underneath is unhealthy. Worth surfacing in the
   // bar: today this only shows up if you open the panel and read the rows.
   readonly property bool degraded: netbird.running
@@ -781,7 +781,9 @@ Panel {
               }
               Text {
                 width: parent.width
-                text: "Switching to " + netbird.profileTransitionTarget + "…"
+                text: netbird.profileTransitioning
+                  ? "Switching to " + netbird.profileTransitionTarget + "…"
+                  : "Connecting to NetBird…"
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.subtitle

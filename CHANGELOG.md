@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switching label; progress styling is reserved for active reconnections.
 - Active-profile transitions use a fixed-height progress view instead of
   briefly exposing stale disconnected details.
+- Connection attempts use the same progress view until the daemon leaves its
+  connecting lifecycle.
 
 ## [2.0.1] - 2026-08-15
 

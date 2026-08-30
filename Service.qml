@@ -73,6 +73,8 @@ Item {
 
   readonly property bool needsLogin: Model.needsLoginState(connState)
   readonly property bool daemonDown: connState === "daemonDown"
+  readonly property bool connectionTransitioning: !profileTransitioning
+    && (desiredState === 1 || connecting)
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   // Back off exponentially while the daemon is unreachable (capped at 5
   // minutes) so a stopped service costs one probe every few minutes instead
@@ -163,7 +165,7 @@ Item {
     // toward it. This lets `Connecting` stay checked/busy, but prevents an
     // `up` that settles back to Idle (or a completed `down`) from latching the
     // switch in the requested position forever.
-    if (desiredState === 1 && !connecting) desiredState = -1
+    if (desiredState === 1 && !connecting && !actionProcess.running) desiredState = -1
     else if (desiredState === 0 && !running && !connecting) desiredState = -1
     statusText = parsed.statusText
     ip = parsed.ip
@@ -704,6 +706,7 @@ Item {
         messageTimer.restart()
       } else {
         root.lastError = ""
+        root.actionStatus = ""
       }
       delayedRefresh.restart()
     }
