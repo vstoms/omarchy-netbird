@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "id": "vstoms.netbird",
   "name": "NetBird",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "author": "Viggo Stomsvik",
   "license": "MIT",
-  "description": "NetBird status, connection control, network selection, peer browsing, and quick actions for the Omarchy bar.",
+  "description": "NetBird status, profile switching, connection control, network selection, peer browsing, and quick actions for the Omarchy bar.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "NetBird",
-    "description": "Toggle NetBird, inspect your connection, browse peers, select networks, copy addresses, SSH, and ping.",
+    "description": "Toggle NetBird, switch profiles, inspect your connection, browse peers, select networks, copy addresses, SSH, and ping.",
     "category": "Network",
     "aliases": ["netbird", "vpn"],
     "allowMultiple": false,

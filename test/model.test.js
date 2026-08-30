@@ -276,4 +276,33 @@ assert.deepStrictEqual(Model.parseNetworks("No networks available.").networks, [
 assert.deepStrictEqual(Model.parseNetworks("").networks, [])
 assert.strictEqual(Model.parseNetworks("Error: failed to list network: rpc error").ok, false)
 
+// Profiles are a fixed-column table because names may contain whitespace.
+const profiles = Model.parseProfiles([
+  "ID        NAME                    ACTIVE",
+  "default   Reload Initiative      ",
+  "5bf1d770  Tobias Gloeckler        ✓",
+  "cafebabe  Work                    ",
+  ""
+].join("\n"))
+assert.strictEqual(profiles.ok, true)
+assert.deepStrictEqual(profiles.profiles, [
+  { id: "default", name: "Reload Initiative", active: false },
+  { id: "5bf1d770", name: "Tobias Gloeckler", active: true },
+  { id: "cafebabe", name: "Work", active: false }
+])
+assert.deepStrictEqual(Model.parseProfiles("").profiles, [])
+assert.strictEqual(Model.parseProfiles("failed to read profiles").ok, false)
+
+// Accept textual markers in case NetBird adds a non-Unicode output mode.
+const textActive = Model.parseProfiles("ID  NAME      ACTIVE\na   Personal  yes")
+assert.strictEqual(textActive.profiles[0].active, true)
+
+// Switching preserves connection intent, not merely the selected profile.
+assert.strictEqual(Model.profileSwitchFollowup("idle"), "connect")
+assert.strictEqual(Model.profileSwitchFollowup("needsLogin"), "login")
+assert.strictEqual(Model.profileSwitchFollowup("sessionExpired"), "login")
+assert.strictEqual(Model.profileSwitchFollowup("connected"), "complete")
+assert.strictEqual(Model.profileSwitchFollowup("connecting"), "wait")
+assert.strictEqual(Model.profileSwitchFollowup("daemonDown"), "wait")
+
 console.log("Model tests passed")

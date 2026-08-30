@@ -380,6 +380,60 @@ function selectedNetworkCount(networks) {
   return count
 }
 
+// `netbird profile list --show-id` is a fixed-column table. Profile names are
+// free-form and may contain spaces, so splitting rows on whitespace would
+// corrupt exactly the names this command is designed to support. Derive the
+// column boundaries from the header instead:
+//
+//   ID        NAME              ACTIVE
+//   default   Personal VPN      ✓
+function parseProfiles(raw) {
+  var text = String(raw || "").trim()
+  if (text === "") return { ok: true, profiles: [] }
+
+  var lines = text.split("\n")
+  var headerIndex = -1
+  var nameColumn = -1
+  var activeColumn = -1
+  for (var i = 0; i < lines.length; i++) {
+    var header = lines[i]
+    var idColumn = header.indexOf("ID")
+    nameColumn = header.indexOf("NAME")
+    activeColumn = header.indexOf("ACTIVE")
+    if (idColumn === 0 && nameColumn > idColumn && activeColumn > nameColumn) {
+      headerIndex = i
+      break
+    }
+  }
+  if (headerIndex === -1)
+    return { ok: false, profiles: [], message: text.split("\n")[0] }
+
+  var profiles = []
+  for (var row = headerIndex + 1; row < lines.length; row++) {
+    var line = lines[row]
+    if (line.trim() === "") continue
+    var id = line.substring(0, nameColumn).trim()
+    var name = line.substring(nameColumn, activeColumn).trim()
+    var activeText = line.substring(activeColumn).trim().toLowerCase()
+    if (id === "" || name === "") continue
+    profiles.push({
+      id: id,
+      name: name,
+      active: activeText === "✓" || activeText === "yes" || activeText === "true" || activeText === "active"
+    })
+  }
+  return { ok: true, profiles: profiles }
+}
+
+// Decide the next step while preserving an active connection across a profile
+// switch. Off-to-off switches never enter this lifecycle.
+function profileSwitchFollowup(state) {
+  if (needsLoginState(state)) return "login"
+  if (state === "idle") return "connect"
+  if (state === "connected") return "complete"
+  return "wait"
+}
+
 function formatBytes(value) {
   var bytes = Number(value || 0)
   if (!isFinite(bytes) || bytes <= 0) return "0 B"
@@ -509,6 +563,8 @@ if (typeof module !== "undefined") {
     normalizeRelays: normalizeRelays,
     parseNetworks: parseNetworks,
     networkSubtitle: networkSubtitle,
-    selectedNetworkCount: selectedNetworkCount
+    selectedNetworkCount: selectedNetworkCount,
+    parseProfiles: parseProfiles,
+    profileSwitchFollowup: profileSwitchFollowup
   }
 }
