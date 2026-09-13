@@ -434,7 +434,7 @@ Panel {
                 }
               }
               trailingControl: Component {
-                ToggleSwitch {
+                NetbirdSwitch {
                   id: powerSwitch
                   visible: netbird.installed
                   checked: netbird.active
@@ -869,6 +869,85 @@ Panel {
     }
   }
 
+  // Keep the plugin's switches pill-shaped even in square-corner themes and
+  // use restrained, low-contrast chrome like the reference control.
+  component NetbirdSwitch: Item {
+    id: switchRoot
+
+    property bool checked: false
+    property bool busy: false
+    property bool interactive: true
+    property bool hasCursor: false
+    property color foreground: root.foreground
+    property int trackHeight: Math.max(26, Math.round(Style.spacing.controlHeight * 0.6))
+    property int trackWidth: Math.round(trackHeight * 1.9)
+    property int knobSize: Math.max(12, Math.round(trackHeight * 0.76))
+    property int knobInset: Math.max(3, Math.round((trackHeight - knobSize) / 2))
+
+    signal toggled()
+    signal hovered(bool isHovered)
+
+    readonly property alias containsMouse: switchMouse.containsMouse
+    readonly property bool hot: hasCursor || switchMouse.containsMouse
+    readonly property int cursorPad: interactive ? Style.space(4) : 0
+
+    implicitWidth: trackWidth + cursorPad * 2
+    implicitHeight: trackHeight + cursorPad * 2
+    opacity: busy ? 0.7 : 1
+
+    Rectangle {
+      anchors.fill: parent
+      visible: switchRoot.interactive && switchRoot.hot
+      radius: height / 2
+      color: "transparent"
+      border.width: 1
+      border.color: Qt.rgba(switchRoot.foreground.r, switchRoot.foreground.g,
+                            switchRoot.foreground.b, 0.24)
+    }
+
+    Rectangle {
+      id: switchTrack
+      anchors.centerIn: parent
+      width: switchRoot.trackWidth
+      height: switchRoot.trackHeight
+      radius: height / 2
+      color: switchRoot.checked
+        ? Qt.rgba(switchRoot.foreground.r, switchRoot.foreground.g, switchRoot.foreground.b, 0.18)
+        : Qt.rgba(switchRoot.foreground.r, switchRoot.foreground.g, switchRoot.foreground.b, 0.025)
+      border.width: 1
+      border.color: Qt.rgba(switchRoot.foreground.r, switchRoot.foreground.g,
+                            switchRoot.foreground.b, switchRoot.checked ? 0.32 : 0.12)
+
+      Behavior on color { ColorAnimation { duration: 120 } }
+
+      Rectangle {
+        width: switchRoot.knobSize
+        height: switchRoot.knobSize
+        radius: height / 2
+        anchors.verticalCenter: parent.verticalCenter
+        x: switchRoot.checked
+          ? switchTrack.width - width - switchRoot.knobInset
+          : switchRoot.knobInset
+        color: switchRoot.checked
+          ? switchRoot.foreground
+          : Qt.darker(switchRoot.foreground, 1.25)
+
+        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 120 } }
+      }
+    }
+
+    MouseArea {
+      id: switchMouse
+      anchors.fill: parent
+      enabled: switchRoot.interactive
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onContainsMouseChanged: switchRoot.hovered(containsMouse)
+      onClicked: if (!switchRoot.busy) switchRoot.toggled()
+    }
+  }
+
   component StatusLabel: Text {
     color: root.dim
     font.family: root.fontFamily
@@ -940,7 +1019,7 @@ Panel {
         }
       }
 
-      ToggleSwitch {
+      NetbirdSwitch {
         id: networkSwitch
         Layout.alignment: Qt.AlignVCenter
         // The row owns the click, so the switch is display-only here.
