@@ -608,23 +608,52 @@ Panel {
               text: "Relays"
               visible: netbird.relayTotal > 0
             }
-            StatusValue {
-              id: relayValue
+            Item {
               visible: netbird.relayTotal > 0
-              text: netbird.relayAvailable + "/" + netbird.relayTotal + " available  "
-                + (root.relaysExpanded ? "󰅃" : "󰅀")
-              color: netbird.relaysDegraded ? root.urgent : root.foreground
-              MouseArea {
-                id: relayMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.relaysExpanded = !root.relaysExpanded
-              }
-              PanelToolTip {
-                visible: relayMouse.containsMouse
-                text: root.relayTooltip()
-                fontFamily: root.fontFamily
+              Layout.fillWidth: true
+              implicitHeight: relayToggle.implicitHeight
+
+              CursorSurface {
+                id: relayToggle
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: relayToggleContent.implicitWidth + Style.space(12)
+                implicitHeight: Math.max(Style.space(24), relayToggleContent.implicitHeight + Style.space(4))
+                hasCursor: relayToggleMouse.containsMouse
+                foreground: netbird.relaysDegraded ? root.urgent : root.foreground
+
+                Row {
+                  id: relayToggleContent
+                  anchors.centerIn: parent
+                  spacing: Style.space(4)
+
+                  Text {
+                    text: netbird.relayAvailable + "/" + netbird.relayTotal + " available"
+                    color: netbird.relaysDegraded ? root.urgent : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: root.relaysExpanded ? "󰅃" : "󰅀"
+                    color: netbird.relaysDegraded ? root.urgent : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.icon
+                  }
+                }
+
+                MouseArea {
+                  id: relayToggleMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.relaysExpanded = !root.relaysExpanded
+                }
+
+                PanelToolTip {
+                  visible: relayToggleMouse.containsMouse
+                  text: root.relayTooltip()
+                  fontFamily: root.fontFamily
+                }
               }
             }
           }
