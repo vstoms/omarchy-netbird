@@ -1,5 +1,28 @@
 const assert = require("assert")
+const fs = require("fs")
+const path = require("path")
 const Model = require("../Model.js")
+
+function directProperties(source, declarationPattern) {
+  const lines = source.split("\n")
+  const declarations = []
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!declarationPattern.test(lines[i])) continue
+    let depth = 0
+    const properties = []
+
+    for (let j = i; j < lines.length; j++) {
+      if (j > i && depth === 1) properties.push(lines[j].trim())
+      depth += (lines[j].match(/\{/g) || []).length
+      depth -= (lines[j].match(/\}/g) || []).length
+      if (j > i && depth === 0) break
+    }
+    declarations.push({ line: i + 1, properties })
+  }
+
+  return declarations
+}
 
 assert.strictEqual(Model.stripCidr("100.85.1.2/16"), "100.85.1.2")
 assert.strictEqual(Model.hostname("laptop.example.net", "100.1.2.3"), "laptop")
@@ -275,5 +298,32 @@ assert.strictEqual(Model.networkSubtitle(networks.networks[1]), "example.com, ww
 assert.deepStrictEqual(Model.parseNetworks("No networks available.").networks, [])
 assert.deepStrictEqual(Model.parseNetworks("").networks, [])
 assert.strictEqual(Model.parseNetworks("Error: failed to list network: rpc error").ok, false)
+
+// Keep operational values unchanged. The display boundary, rather than the
+// parser, is responsible for making markup inert.
+const markup = '<img src="http://localhost/internal"> & literal text'
+const markupNetwork = Model.parseNetworks([
+  "Available Networks:",
+  "  - ID: " + markup,
+  "    Status: Selected"
+].join("\n"))
+assert.strictEqual(markupNetwork.networks[0].id, markup)
+assert.strictEqual(Model.normalizePeer({ fqdn: markup }).name, markup)
+
+// QML Text defaults to AutoText, which can interpret process- or
+// control-plane-derived markup. Every panel-owned Text must opt into inert
+// rendering at the declaration, including reusable inline components.
+const panelSource = fs.readFileSync(path.join(__dirname, "..", "Panel.qml"), "utf8")
+const textDeclarations = directProperties(panelSource, /^\s*(?:component\s+\w+\s*:\s*)?Text\s*\{/)
+assert.ok(textDeclarations.length > 0)
+for (const declaration of textDeclarations) {
+  assert.ok(
+    declaration.properties.includes("textFormat: Text.PlainText"),
+    `Text declaration at Panel.qml:${declaration.line} must use Text.PlainText`)
+}
+assert.match(panelSource, /PanelHero\s*\{[\s\S]*?\n\s*title:\s*"NetBird"/)
+assert.match(
+  panelSource,
+  /PanelToolTip\s*\{\s*visible:\s*relayMouse\.containsMouse\s*text:\s*root\.relaysExpanded\s*\?\s*"Hide relay details"\s*:\s*"Show relay details"/)
 
 console.log("Model tests passed")

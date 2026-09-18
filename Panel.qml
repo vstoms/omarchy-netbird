@@ -416,7 +416,7 @@ Panel {
             PanelHero {
               id: hero
               width: parent.width
-              title: netbird.fqdn || "NetBird"
+              title: "NetBird"
               meta: netbird.active
                 ? netbird.peerConnected + "/" + netbird.peerTotal + " peers connected"
                   + (netbird.peerConnecting > 0 ? " · " + netbird.peerConnecting + " connecting" : "")
@@ -456,6 +456,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: netbird.actionStatus !== "" || netbird.lastError !== ""
             width: parent.width
             text: netbird.actionStatus !== "" ? netbird.actionStatus : netbird.lastError
@@ -493,6 +494,7 @@ Panel {
               spacing: Style.space(8)
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: netbird.hint !== "" ? netbird.hint : netbird.statusText
                 color: root.dim
@@ -504,6 +506,7 @@ Panel {
               // While a login is running the code is the thing the user has
               // to read off the screen, so it gets the prominent treatment.
               Text {
+                textFormat: Text.PlainText
                 visible: netbird.loginCode !== ""
                 text: "Code: " + netbird.loginCode
                 color: root.foreground
@@ -512,6 +515,7 @@ Panel {
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: netbird.loginActive && netbird.loginUrl === ""
                 width: parent.width
                 text: "Waiting for the login URL…"
@@ -521,6 +525,7 @@ Panel {
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: netbird.daemonDown
                 width: parent.width
                 text: root.daemonStartCommand
@@ -565,6 +570,7 @@ Panel {
           // A CLI and daemon on different versions is a real source of odd
           // behaviour, and both numbers are already in the status payload.
           Text {
+            textFormat: Text.PlainText
             visible: netbird.versionMismatch
             width: parent.width
             text: "CLI " + netbird.cliVersion + " and daemon " + netbird.daemonVersion
@@ -592,6 +598,8 @@ Panel {
                 onClicked: netbird.copy(netbird.ip)
               }
             }
+            StatusLabel { text: "Hostname" }
+            StatusValue { text: netbird.fqdn || "—" }
             StatusLabel { text: "Profile" }
             StatusValue { text: netbird.profileName || "default" }
             StatusLabel { text: "Management" }
@@ -623,7 +631,7 @@ Panel {
               }
               PanelToolTip {
                 visible: relayMouse.containsMouse
-                text: root.relayTooltip()
+                text: root.relaysExpanded ? "Hide relay details" : "Show relay details"
                 fontFamily: root.fontFamily
               }
             }
@@ -644,12 +652,14 @@ Panel {
                 spacing: Style.space(8)
 
                 Text {
+                  textFormat: Text.PlainText
                   text: modelData.available ? "󰄴" : "󰅙"
                   color: modelData.available ? root.dim : root.urgent
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                 }
                 Text {
+                  textFormat: Text.PlainText
                   Layout.fillWidth: true
                   text: modelData.name
                   color: root.dim
@@ -658,6 +668,7 @@ Panel {
                   elide: Text.ElideRight
                 }
                 Text {
+                  textFormat: Text.PlainText
                   text: modelData.error !== "" ? modelData.error : modelData.scheme
                   color: modelData.error !== "" ? root.urgent : root.dim
                   font.family: root.fontFamily
@@ -700,6 +711,7 @@ Panel {
                 spacing: Style.space(2)
 
                 Text {
+                  textFormat: Text.PlainText
                   text: netbird.networksSelected + "/" + root.visibleNetworks.length
                   color: root.dim
                   font.family: root.fontFamily
@@ -726,6 +738,7 @@ Panel {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: netbird.networksError !== ""
               width: parent.width
               text: netbird.networksError
@@ -781,6 +794,7 @@ Panel {
                 spacing: Style.space(2)
 
                 Text {
+                  textFormat: Text.PlainText
                   visible: root.searchQuery !== ""
                   text: root.visiblePeers.length + " of " + netbird.peers.length
                   color: root.dim
@@ -837,6 +851,7 @@ Panel {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.visiblePeers.length === 0
               width: parent.width
               text: root.searchQuery !== "" ? "No peers match \"" + root.searchQuery + "\"." : "No peers found."
@@ -949,6 +964,7 @@ Panel {
   }
 
   component StatusLabel: Text {
+    textFormat: Text.PlainText
     color: root.dim
     font.family: root.fontFamily
     font.pixelSize: Style.font.caption
@@ -956,6 +972,7 @@ Panel {
   }
 
   component StatusValue: Text {
+    textFormat: Text.PlainText
     color: root.foreground
     font.family: root.fontFamily
     font.pixelSize: Style.font.bodySmall
@@ -989,6 +1006,7 @@ Panel {
       spacing: Style.space(8)
 
       Text {
+        textFormat: Text.PlainText
         text: networkRow.network && networkRow.network.domains.length > 0 ? "󰇗" : "󰩠"
         color: networkRow.network && networkRow.network.selected ? root.foreground : root.dim
         font.family: root.fontFamily
@@ -1001,6 +1019,7 @@ Panel {
         Layout.fillWidth: true
         spacing: Style.space(1)
         Text {
+          textFormat: Text.PlainText
           Layout.fillWidth: true
           text: networkRow.network ? networkRow.network.id : ""
           color: root.foreground
@@ -1009,6 +1028,7 @@ Panel {
           elide: Text.ElideRight
         }
         Text {
+          textFormat: Text.PlainText
           Layout.fillWidth: true
           visible: text !== ""
           text: Model.networkSubtitle(networkRow.network)
@@ -1066,6 +1086,7 @@ Panel {
         spacing: Style.space(8)
 
         Text {
+          textFormat: Text.PlainText
           text: root.connectionIcon(peerRow.peer)
           color: root.peerColor(peerRow.peer)
           font.family: root.fontFamily
@@ -1078,6 +1099,7 @@ Panel {
           Layout.fillWidth: true
           spacing: Style.space(1)
           Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: peerRow.peer ? peerRow.peer.name : "Unknown"
             color: root.foreground
@@ -1086,6 +1108,7 @@ Panel {
             elide: Text.ElideRight
           }
           Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: root.peerSubtitle(peerRow.peer)
             color: peerRow.peer && peerRow.peer.connecting ? root.pending : root.dim
@@ -1221,6 +1244,7 @@ Panel {
     visible: value !== ""
 
     Text {
+      textFormat: Text.PlainText
       text: detailRow.label
       color: root.dim
       font.family: root.fontFamily
@@ -1228,6 +1252,7 @@ Panel {
       Layout.alignment: Qt.AlignTop
     }
     Text {
+      textFormat: Text.PlainText
       Layout.fillWidth: true
       text: detailRow.value
       color: root.foreground
